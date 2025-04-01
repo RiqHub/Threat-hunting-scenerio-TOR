@@ -5,7 +5,7 @@
 
 
 
-# Threat Hunt Report: Pwncrypt Ransomeware Scenario
+# Threat Hunt Report: Pwncrypt Ransomware Scenario
 - [Scenario Creation Example](https://github.com/RiqHub/Threat-hunting-scenerio-TOR/blob/main/Threat%20hunting%20scenario%20event%20creation)
 
 ## Platforms and Languages Leveraged
