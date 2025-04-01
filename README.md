@@ -6,7 +6,7 @@
 
 
 # Threat Hunt Report: Pwncrypt Ransomware Scenario
-- [Scenario Creation Example](https://github.com/RiqHub/Threat-hunting-scenerio-TOR/blob/main/Threat%20hunting%20scenario%20event%20creation)
+- [Scenario Creation Template](https://github.com/RiqHub/Threat-hunting-scenerio-TOR/blob/main/Threat%20hunting%20scenario%20event%20creation)
 
 ## Platforms and Languages Leveraged
 - Windows 10 Virtual Machines (Microsoft Azure)
