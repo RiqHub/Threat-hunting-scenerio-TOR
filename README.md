@@ -1,23 +1,25 @@
 <img width="400" src="https://github.com/user-attachments/assets/44bac428-01bb-4fe9-9d85-96cba7698bee" alt="Tor Logo with the onion and a crosshair on it"/>
 
-# Threat Hunt Report: Unauthorized TOR Usage
-- [Scenario Creation](https://github.com/RiqHub/Threat-hunting-scenerio-TOR/blob/main/Threat%20hunting%20scenario%20event%20creation)
+# Threat Hunt Report: Pwncrypt Ransomeware Scenario
+- [Scenario Creation Example](https://github.com/RiqHub/Threat-hunting-scenerio-TOR/blob/main/Threat%20hunting%20scenario%20event%20creation)
 
 ## Platforms and Languages Leveraged
 - Windows 10 Virtual Machines (Microsoft Azure)
 - EDR Platform: Microsoft Defender for Endpoint
 - Kusto Query Language (KQL)
-- Tor Browser
+
 
 ##  Scenario
 
-Management suspects that some employees may be using TOR browsers to bypass network security controls because recent network logs show unusual encrypted traffic patterns and connections to known TOR entry nodes. Additionally, there have been anonymous reports of employees discussing ways to access restricted sites during work hours. The goal is to detect any TOR usage and analyze related security incidents to mitigate potential risks. If any use of TOR is found, notify management.
+A new ransomware strain named PwnCrypt has been reported in the news, leveraging a PowerShell-based payload to encrypt files on infected systems. The payload, using AES-256 encryption, targets specific directories such as the C:\Users\Public\Desktop, encrypting files and prepending a .pwncrypt extension to the original extension. For example, hello.txt becomes hello.pwncrypt.txt after being targeted with the ransomware. The CISO is concerned with the new ransomware strain being spread to the corporate network and wishes to investigate.
 
-### High-Level TOR-Related IoC Discovery Plan
 
-- **Check `DeviceFileEvents`** for any `tor(.exe)` or `firefox(.exe)` file events.
+### Ransomware IoC Discovery Plan
+
+- **Check `DeviceFileEvents`** for any `.pwncrypt(.txt)` file events.
 - **Check `DeviceProcessEvents`** for any signs of installation or usage.
-- **Check `DeviceNetworkEvents`** for any signs of outgoing connections over known TOR ports.
+- **Check 'DeviceNetworkEvents'** to determin scope of attack
+
 
 ---
 
@@ -25,7 +27,7 @@ Management suspects that some employees may be using TOR browsers to bypass netw
 
 ### 1. Searched the `DeviceFileEvents` Table
 
-Searched the **DeviceFileEvents** table to see if there were any tor related files in it. What was discovered was the user “labuser” download of  the tor browser which created several tor related files on the desktop, including a file named “torshoppintlist.txt”. These events began at:
+Searched the **DeviceFileEvents** table to see if there were any pwncrypt related files in it. What was discovered was files 1617_CompanyFinancials, 3871_ProjectList and 9905_EmployeeRecords were encrypted and changed to pwncrypt files. Also a decryption instrustructions file was also put on the desktop with instructions on how to gain access to the files again.
 
 
 
@@ -33,82 +35,86 @@ Searched the **DeviceFileEvents** table to see if there were any tor related fil
 
 ```kql
 DeviceFileEvents
-|where DeviceName == "endpoint-vm-ev"
-| where FileName startswith "tor"
-| order by Timestamp desc
-|project Timestamp, DeviceName, ActionType, FolderPath, SHA256, Account = InitiatingProcessAccountName
+| where DeviceName == "riq-test"
+| where ActionType in ("FileCreated", "FileRenamed")
+| where FileName contains "pwncrypt"
+| project Timestamp, DeviceName, InitiatingProcessFileName, FileName, FolderPath, SHA256
+| order by Timestamp desce
 ```
 
 
-![image](https://github.com/user-attachments/assets/9175155e-6e70-4330-a85b-54c167356b56)
+![image](https://github.com/user-attachments/assets/fb9a60dc-5785-4187-8668-1f78768aa1c4)
+
 
 ---
 
 ### 2. Searched the `DeviceProcessEvents` Table
 
-Searched the command line for any string that contained “"tor-browser-windows-x86_64-portable-14.0.7.exe". Based on the log findings, at 2025-03-10T18:07:44.5228069Z the employee on the “endpoint-vm-ev” device ran the file to install the TOR browser.
+We pivoted to the DeviceProcesEvents logs to investigate the command that initated the "pwncrypt.ps1" script. What was found was a command to download the file from a github URL then another command to run the downloaded script immediately after. (Also, we can look up the SHA256 hash in Virus Total to see what information we can get but since this is just an example nothing will return)
 
 
 **Query used to locate event:**
 
 ```kql
 
+let VMName = "riq-test";
 DeviceProcessEvents
-| where DeviceName == "endpoint-vm-ev"
-| where ProcessCommandLine contains "tor-browser-windows-x86_64-portable-14.0.7.exe"
-|project Timestamp, DeviceName, ActionType, FileName, FolderPath, SHA256, ProcessCommandLine
+| where DeviceName == VMName
+| where InitiatingProcessCommandLine contains "pwncrypt.ps1"
+| order by Timestamp desc
+| project ActionType, DeviceName, FileName, InitiatingProcessCommandLine
 ```
 
 
-![image](https://github.com/user-attachments/assets/c4229d94-6321-4b5d-9e6c-a1d6d6e24172)
+![image](https://github.com/user-attachments/assets/0b9d28a6-33db-456e-8116-eee078312106)
+
+<br>
+
+
+
+<p align="center">
+  <img width="400" height="400"src=https://github.com/user-attachments/assets/76baffc1-8aa8-4b70-ad2f-90411fbf485c>
+</p>
 
 ---
 
-### 3. Searched the `DeviceProcessEvents` Table for TOR Browser Execution
+### 3. Identify Affected Users
 
-Searched the DeviceProcessEvents table for any indication that the user opened the tor browser.There was evidence that they did open it at 2025-03-10T18:13:10.7259043Z. There were several other instances of firefox.exe and tor.exe spawned after.
-
-**Query used to locate events:**
-
-```kql
-DeviceProcessEvents
-| where DeviceName == "endpoint-vm-ev"
-| where FileName has_any ("tor.exe", "firefox.exe")
-|project Timestamp, DeviceName, ActionType, FileName, FolderPath, SHA256, ProcessCommandLine
-|order by Timestamp desc
-```
-
-
-![image](https://github.com/user-attachments/assets/8574cc71-5094-4101-b78f-cf7343bb4fd5)
-
-
----
-
-### 4. Searched the `DeviceNetworkEvents` Table for TOR Network Connections
-
-Searched the DeviceNetworksEvents table for any indication that any of the known TOR ports were used to establish a successful connection. At 2025-03-10T18:13:41.5487141Z, user “labuser” connected to the remote IP address 127.0.0.1 on port 9150. 
+Found that mupliple users have also been affected by 4 similar Remote IP's. May be being controled by a command and control server.
 
 **Query used to locate events:**
 
 ```kql
 DeviceNetworkEvents
-|where DeviceName == "endpoint-vm-ev"
-|where RemotePort in ("9001", "9030", "9040", "9050", "9051", "9150")
-| project Timestamp, DeviceName, InitiatingProcessAccountName, ActionType, RemoteIP, RemotePort, RemoteUrl, InitiatingProcessFileName, InitiatingProcessFolderPath
+| where Timestamp > ago(24h)
+| where RemoteUrl contains "githubusercontent.com" or RemoteIP in ("<Known Malicious IPs>")
+| where InitiatingProcessFileName endswith "powershell.exe"
+| project Timestamp, DeviceName, RemoteIP, RemoteUrl, InitiatingProcessFileName, InitiatingProcessCommandLine
+| order by Timestamp desc
 ```
 
 
-![image](https://github.com/user-attachments/assets/d4c73089-0ef9-473c-97dd-40bb79f33ac2)
+![image](https://github.com/user-attachments/assets/9feb5b0f-4279-4614-82f5-ea3a9c09d1b8)
+
+<br>
+
+![image](https://github.com/user-attachments/assets/df11cb8b-9c2c-4166-b1cc-3a502489e235)
+
+
+
+---
+
+
 
 
 ---
 
 ## Event 1: File Download
-- **Timestamp:** 2025-03-10T18:07:26.5307721Z
+- **Timestamp:** 2025-04-01T00:13:53.1667264Z
 - **Action:** File Created
-- **Details:** User downloaded tor-browser-windows-x86_64-portable-14.0.7.exe to the Downloads folder.
-- **Process:** msedge.exe
-- **Path:** C:\Users\labuser\Downloads\tor-browser-windows-x86_64-portable-14.0.4.exe
+- **Details:** User downloaded pwncrypt.ps1 to the ProgramData folder.
+- **Process:** powershell.exe
+- **Path:** C:\ProgramData\pwncrypt.ps1
 
 ## Event 2: TOR Browser Installation
 - Timestamp: 2025-03-10T18:07:44.5228069Z
